@@ -26,55 +26,29 @@ RUN rm -rf /mnt \
   & mkdir -p /mnt/data/openstreetmap \
   & mkdir -p /tmp/openstreetmap \
   & mkdir -p /mnt/data/openaddresses \
-  & mkdir -p /mnt/data/quattroshapes \
-  & mkdir -p /mnt/data/nls-places
+  & mkdir -p /mnt/data/quattroshapes
 
 # Download quattroshapes data (only higher levels will be used)
 WORKDIR /mnt/data/quattroshapes
-RUN curl -sS -O http://quattroshapes.mapzen.com/quattroshapes/alpha3/FIN.tgz \
-  && tar zxvf FIN.tgz && rm -f FIN.tgz \
-  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_adm0.shp FIN/FIN_admin0.shp -lco ENCODING=UTF-8 \
-  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_adm1.shp FIN/FIN_admin1.shp -lco ENCODING=UTF-8 \
-  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_adm2.shp FIN/FIN_admin2.shp -lco ENCODING=UTF-8 \
-  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_localadmin.shp FIN/FIN_localadmin.shp -lco ENCODING=UTF-8 \
-  && rm -rf FIN
+RUN curl -sS -O http://quattroshapes.mapzen.com/quattroshapes/quattroshapes-simplified.tar.gz \
+  && tar zxvf quattroshapes-simplified.tar.gz && rm -f quattroshapes-simplified.tar.gz \
+  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_adm0.shp simplified/qs_adm0.shp -lco ENCODING=UTF-8 \
+  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_adm1.shp simplified/qs_adm1.shp -lco ENCODING=UTF-8 \
+  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_adm2.shp simplified/qs_adm2.shp -lco ENCODING=UTF-8 \
+  && SHAPE_ENCODING="ISO-8859-1" ogr2ogr qs_localadmin.shp simplified/qs_localadmin.shp -lco ENCODING=UTF-8 \
+  && rm -rf simplified
 
-# Download Finnish municipalities and convert these to quattroshapes format
-RUN curl -sS -O http://kartat.kapsi.fi/files/kuntajako/kuntajako_10k/etrs89/gml/TietoaKuntajaosta_2015_10k.zip \
-  && unzip TietoaKuntajaosta_2015_10k.zip \
-  && ogr2ogr -t_srs EPSG:4326 -nlt POLYGON -splitlistfields -where "nationalLevel='4thOrder'" -f "ESRI Shapefile" kunnat.shp TietoaKuntajaosta_2015_10k/SuomenKuntajako_2015_10k.xml AdministrativeUnit -lco ENCODING=UTF-8 \
-  && ogr2ogr -sql "SELECT text1 AS qs_loc FROM kunnat" -f "ESRI Shapefile" qs_localities.shp kunnat.shp -lco ENCODING=UTF-8 \
-  && rm -rf TietoaKuntajaosta_2015_10k.zip TietoaKuntajaosta_2015_10k/ kunnat.*
-
-# Download zip codes and convert these to quattroshapes format
-RUN ogr2ogr -t_srs EPSG:4326 -nlt POLYGON -sql "SELECT CONCAT( posti_alue, ' ', nimi ) AS name from 'postialue:pno_meri_2015'" -f "ESRI Shapefile" qs_neighborhoods.shp WFS:http://geo.stat.fi/geoserver/postialue/postialue%3Apno_meri_2015/wfs -lco ENCODING=UTF-8
 
 # Download OpenStreetMap
 WORKDIR /mnt/data/openstreetmap
-RUN curl -sS -O http://download.geofabrik.de/europe/finland-latest.osm.pbf
+RUN curl -sS -O http://download.bbbike.org/osm/planet/planet-latest.osm.pbf
 
-#TODO: find out run number from http://results.openaddresses.io/state.txt
-#TODO: Add Tampere after their data has been fixed
+# Download openaddress
 WORKDIR /mnt/data/openaddresses
-RUN curl -sS -O http://data.openaddresses.io.s3.amazonaws.com/runs/37881/fi/18/helsinki.zip \
-  && unzip -o helsinki.zip \
-  && rm helsinki.zip \
-  && curl -sS -O http://data.openaddresses.io.s3.amazonaws.com/runs/37878/fi/14/oulu.zip \
-  && unzip -o oulu.zip \
-  && rm oulu.zip \
-  && curl -sS -O http://data.openaddresses.io.s3.amazonaws.com/runs/32517/fi/19/turku.zip \
-  && unzip -o turku.zip \
-  && rm turku.zip
+RUN curl -sS -O http://s3.amazonaws.com/data.openaddresses.io/openaddr-collected-global.zip \
+  && unzip -o openaddr-collected-global.zip \
+  && rm openaddr-collected-global.zip 
 
-# Download nls paikat data
-WORKDIR /mnt/data/nls-places
-RUN curl -sS -O http://kartat.kapsi.fi/files/nimisto/paikat/etrs89/gml/paikat_2015_05.zip \
-  && unzip paikat_2015_05.zip \
-  && rm paikat_2015_05.zip
-
-RUN git clone https://github.com/HSLdevcom/pelias-nlsfi-places-importer.git $HOME/.pelias/nls-fi-places \
-  && cd $HOME/.pelias/nls-fi-places \
-  && npm install
 
 WORKDIR /root
 
@@ -89,7 +63,6 @@ RUN gosu elasticsearch elasticsearch -d \
   && npm install -g pelias-cli \
   && sleep 30 \
   && pelias schema#production create_index \
-  && node $HOME/.pelias/nls-fi-places/lib/index -d /mnt/data/nls-places \
   && pelias openaddresses#production import --admin-values \
   && pelias openstreetmap#production import
 
